@@ -1,4 +1,4 @@
-from aiogram import BaseMiddleware, F, Router
+from aiogram import Bot, BaseMiddleware, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     BufferedInputFile,
@@ -186,22 +186,25 @@ async def create(msg: Message):
     if len(parts) < 2 or not parts[1].strip():
         await msg.answer("Использование: /create <имя>", reply_markup=main_menu())
         return
-    await msg.answer("Создаю пользователя...")
+    name = parts[1].strip()
+    status_msg = await msg.answer("Создаю пользователя...")
     try:
-        cfg, qr = wireguard.create_peer(parts[1])
+        cfg, qr = wireguard.create_peer(name)
     except WGError as e:
+        await status_msg.delete()
         await msg.answer(f"⚠️ {e}")
         return
     except Exception as e:
+        await status_msg.delete()
         await msg.answer(f"⚠️ Ошибка MikroTik: {e}")
         return
-    CONFIGS[parts[1].lower()] = cfg
+    CONFIGS[name.lower()] = {"cfg": cfg, "status_id": status_msg.message_id}
     kb = InlineKeyboardBuilder()
-    kb.button(text="⚙️ Показать настройки", callback_data=f"cfg:{parts[1]}")
+    kb.button(text="⚙️ Показать настройки", callback_data=f"cfg:{name}")
     await msg.answer_photo(
         BufferedInputFile(qr.read(), filename="config.png"),
         caption=(
-            f"Пользователь <b>{parts[1]}</b> создан!\n"
+            f"Пользователь <b>{name}</b> создан!\n"
             "Отсканируй QR-код или нажми кнопку, чтобы увидеть настройки:"
         ),
         reply_markup=kb.as_markup(),
@@ -321,16 +324,24 @@ async def cq_create(cq: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("cfg:"))
-async def cq_show_config(cq: CallbackQuery):
+async def cq_show_config(cq: CallbackQuery, bot: Bot):
     name = cq.data.split(":", 1)[1]
-    cfg = CONFIGS.get(name.lower())
-    if not cfg:
+    info = CONFIGS.get(name.lower())
+    if not info:
         await cq.answer(
             "Настройки недоступны. Создай пользователя заново: /create <имя>",
             show_alert=True,
         )
         return
-    await cq.message.answer(f"<pre>{cfg}</pre>")
+    try:
+        await cq.message.delete()
+    except Exception:
+        pass
+    try:
+        await bot.delete_message(cq.message.chat.id, info["status_id"])
+    except Exception:
+        pass
+    await cq.message.answer(f"<pre>{info['cfg']}</pre>")
     await cq.answer()
 
 
