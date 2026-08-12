@@ -241,6 +241,8 @@ async def config_cmd(msg: Message, bot: Bot):
         await _del_msg(bot, chat, view.get("photo_id"))
     kb = InlineKeyboardBuilder()
     kb.button(text="⚙️ Показать настройки", callback_data=f"reveal:{name}")
+    kb.button(text="⬅️ В меню", callback_data="tomenu")
+    kb.adjust(1)
     photo = await msg.answer_photo(
         BufferedInputFile(wireguard._make_qr(cfg).read(), filename="config.png"),
         caption=f"Настройки пользователя <b>{name}</b>.",
@@ -313,6 +315,20 @@ async def stats(msg: Message):
 async def cq_menu(cq: CallbackQuery):
     await cq.message.edit_text(
         "Главное меню. Выбери действие:", reply_markup=main_menu()
+    )
+    await cq.answer()
+
+
+@router.callback_query(F.data == "tomenu")
+async def cq_tomenu(cq: CallbackQuery, bot: Bot):
+    chat = cq.message.chat.id
+    try:
+        await cq.message.delete()
+    except Exception:
+        pass
+    VIEWS.pop(chat, None)
+    await bot.send_message(
+        chat, "Главное меню. Выбери действие:", reply_markup=main_menu()
     )
     await cq.answer()
 
@@ -420,6 +436,8 @@ async def cq_show_peer_cfg(cq: CallbackQuery, bot: Bot):
         pass
     kb = InlineKeyboardBuilder()
     kb.button(text="⚙️ Показать настройки", callback_data=f"reveal:{name}")
+    kb.button(text="⬅️ В меню", callback_data="tomenu")
+    kb.adjust(1)
     photo = await bot.send_photo(
         chat,
         BufferedInputFile(wireguard._make_qr(cfg).read(), filename="config.png"),
