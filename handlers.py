@@ -218,6 +218,8 @@ async def create(msg: Message):
     CONFIGS[name.lower()] = {"cfg": cfg, "status_id": status_msg.message_id}
     kb = InlineKeyboardBuilder()
     kb.button(text="⚙️ Показать настройки", callback_data=f"cfg:{name}")
+    kb.button(text="📄 Скачать файл", callback_data=f"file:{name}")
+    kb.adjust(1)
     await msg.answer_photo(
         BufferedInputFile(qr.read(), filename="config.png"),
         caption=(
@@ -247,6 +249,7 @@ async def config_cmd(msg: Message, bot: Bot):
         await _del_msg(bot, chat, view.get("photo_id"))
     kb = InlineKeyboardBuilder()
     kb.button(text="⚙️ Показать настройки", callback_data=f"reveal:{name}")
+    kb.button(text="📄 Скачать файл", callback_data=f"file:{name}")
     kb.button(text="⬅️ В меню", callback_data="tomenu")
     kb.adjust(1)
     photo = await msg.answer_photo(
@@ -416,6 +419,8 @@ async def create_name(msg: Message, state: FSMContext):
     CONFIGS[name.lower()] = {"cfg": cfg, "status_id": status_msg.message_id}
     kb = InlineKeyboardBuilder()
     kb.button(text="⚙️ Показать настройки", callback_data=f"cfg:{name}")
+    kb.button(text="📄 Скачать файл", callback_data=f"file:{name}")
+    kb.adjust(1)
     await msg.answer_photo(
         BufferedInputFile(qr.read(), filename="config.png"),
         caption=(
@@ -485,6 +490,7 @@ async def cq_show_peer_cfg(cq: CallbackQuery, bot: Bot):
         pass
     kb = InlineKeyboardBuilder()
     kb.button(text="⚙️ Показать настройки", callback_data=f"reveal:{name}")
+    kb.button(text="📄 Скачать файл", callback_data=f"file:{name}")
     kb.button(text="⬅️ В меню", callback_data="tomenu")
     kb.adjust(1)
     photo = await bot.send_photo(
@@ -514,6 +520,22 @@ async def cq_reveal_cfg(cq: CallbackQuery, bot: Bot):
         view = {"photo_id": None, "cfg_id": None}
         VIEWS[chat] = view
     view["cfg_id"] = msg.message_id
+    await cq.answer()
+
+
+@router.callback_query(F.data.startswith("file:"))
+async def cq_send_file(cq: CallbackQuery, bot: Bot):
+    name = cq.data.split(":", 1)[1]
+    try:
+        cfg = wireguard.get_peer_config(name)
+    except WGError as e:
+        await cq.answer(str(e), show_alert=True)
+        return
+    await bot.send_document(
+        cq.message.chat.id,
+        BufferedInputFile(cfg.encode(), filename=f"{name}.conf"),
+        caption=f"Конфиг пользователя <b>{name}</b>",
+    )
     await cq.answer()
 
 
