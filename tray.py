@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 
 import pystray
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "bot.log"
@@ -34,6 +34,8 @@ _hMutex = None
 COLOR_OK = (76, 175, 80, 255)      # зелёный
 COLOR_ERR = (229, 57, 53, 255)     # красный
 COLOR_WHITE = (255, 255, 255, 255)
+COLOR_BLUE = (42, 169, 224, 255)   # синий (как у Telegram)
+COLOR_GRAY = (158, 158, 158, 255)  # серый (бот остановлен)
 
 _proc = None
 _lock = threading.Lock()
@@ -142,17 +144,40 @@ def _make_icon(running):
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    color = COLOR_OK if running else COLOR_ERR
-    d.ellipse([2, 2, size - 2, size - 2], fill=color, outline=COLOR_WHITE, width=4)
-    if running:
-        # белая галочка "работает"
-        d.line([18, 34, 29, 46], fill=COLOR_WHITE, width=8)
-        d.line([29, 46, 48, 22], fill=COLOR_WHITE, width=8)
-    else:
-        # белый крестик "остановлен"
-        d.line([20, 20, 44, 44], fill=COLOR_WHITE, width=8)
-        d.line([44, 20, 20, 44], fill=COLOR_WHITE, width=8)
+
+    # Круг как у Telegram: синий — бот работает, серый — остановлен.
+    bg = COLOR_BLUE if running else COLOR_GRAY
+    d.ellipse([2, 2, size - 2, size - 2], fill=bg)
+
+    # Белый самолётик (отправка сообщения) в стиле Telegram.
+    plane = [
+        (13, 35), (51, 14), (40, 47), (31, 40), (22, 56), (26, 40),
+    ]
+    d.polygon(plane, fill=COLOR_WHITE)
+
+    # Надпись WG под самолётиком.
+    font = _load_font(15)
+    text = "WG"
+    bbox = d.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    d.text(((size - tw) / 2 - bbox[0], 47), text, font=font, fill=COLOR_WHITE)
+
+    # Цветная точка статуса в правом верхнем углу: зелёная — запущен, красная — остановлен.
+    dot = COLOR_OK if running else COLOR_ERR
+    d.ellipse([43, 4, 60, 21], fill=dot, outline=COLOR_WHITE, width=2)
     return img
+
+
+def _load_font(size):
+    for path in (
+        r"C:\Windows\Fonts\segoeuib.ttf",
+        r"C:\Windows\Fonts\arialbd.ttf",
+    ):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
 
 
 def _build_menu():
