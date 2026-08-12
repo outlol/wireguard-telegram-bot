@@ -1,0 +1,6 @@
+aiogram>=3.4
+librouteros>=3.1
+cryptography>=41.0
+qrcode>=7.4
+Pillow>=10.0
+python-dotenv>=1.0
