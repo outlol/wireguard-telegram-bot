@@ -36,6 +36,7 @@ COLOR_ERR = (229, 57, 53, 255)     # красный
 COLOR_WHITE = (255, 255, 255, 255)
 COLOR_BLUE = (42, 169, 224, 255)   # синий (как у Telegram)
 COLOR_GRAY = (158, 158, 158, 255)  # серый (бот остановлен)
+COLOR_WG = (24, 110, 48, 255)      # тёмно-зелёный (WireGuard)
 
 _proc = None
 _lock = threading.Lock()
@@ -145,26 +146,27 @@ def _make_icon(running):
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    # Круг как у Telegram: синий — бот работает, серый — остановлен.
-    bg = COLOR_BLUE if running else COLOR_GRAY
-    d.ellipse([2, 2, size - 2, size - 2], fill=bg)
+    # Треугольник WireGuard: тёмно-зелёный — бот работает, серый — остановлен.
+    bg = COLOR_WG if running else COLOR_GRAY
+    tri = [(32, 4), (6, 60), (58, 60)]
+    d.polygon(tri, fill=bg, outline=COLOR_WHITE, width=3)
 
-    # Белый самолётик (отправка сообщения) в стиле Telegram.
-    plane = [
-        (13, 35), (51, 14), (40, 47), (31, 40), (22, 56), (26, 40),
-    ]
-    d.polygon(plane, fill=COLOR_WHITE)
-
-    # Надпись WG под самолётиком.
-    font = _load_font(15)
+    # Надпись WG по центру треугольника.
+    font = _load_font(20)
     text = "WG"
     bbox = d.textbbox((0, 0), text, font=font)
     tw = bbox[2] - bbox[0]
-    d.text(((size - tw) / 2 - bbox[0], 47), text, font=font, fill=COLOR_WHITE)
+    th = bbox[3] - bbox[1]
+    d.text(
+        ((size - tw) / 2 - bbox[0], 30 - th / 2 - bbox[1]),
+        text,
+        font=font,
+        fill=COLOR_WHITE,
+    )
 
-    # Цветная точка статуса в правом верхнем углу: зелёная — запущен, красная — остановлен.
+    # Точка статуса в правом верхнем углу: зелёная — запущен, красная — остановлен.
     dot = COLOR_OK if running else COLOR_ERR
-    d.ellipse([43, 4, 60, 21], fill=dot, outline=COLOR_WHITE, width=2)
+    d.ellipse([44, 4, 60, 20], fill=dot, outline=COLOR_WHITE, width=2)
     return img
 
 
