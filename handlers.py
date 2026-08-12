@@ -387,6 +387,10 @@ async def cq_stats(cq: CallbackQuery):
 @router.callback_query(F.data == "create")
 async def cq_create(cq: CallbackQuery, state: FSMContext):
     await state.set_state(CreatePeer.name)
+    try:
+        await cq.message.delete()
+    except Exception:
+        pass
     kb = InlineKeyboardBuilder()
     kb.button(text="⬅️ В меню", callback_data="tomenu")
     await cq.message.answer(
