@@ -1,5 +1,7 @@
 from aiogram import Bot, BaseMiddleware, F, Router
 from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
@@ -18,6 +20,10 @@ router = Router()
 AUTHED = set()
 CONFIGS = {}
 VIEWS = {}  # chat_id -> {"photo_id": ..., "cfg_id": ...}
+
+
+class CreatePeer(StatesGroup):
+    name = State()
 
 HELP_TEXT = (
     "<b>WireGuardPilot — управление VPN</b>\n\n"
@@ -312,7 +318,8 @@ async def stats(msg: Message):
 
 
 @router.callback_query(F.data == "menu")
-async def cq_menu(cq: CallbackQuery):
+async def cq_menu(cq: CallbackQuery, state: FSMContext):
+    await state.clear()
     await cq.message.edit_text(
         "Главное меню. Выбери действие:", reply_markup=main_menu()
     )
@@ -320,7 +327,8 @@ async def cq_menu(cq: CallbackQuery):
 
 
 @router.callback_query(F.data == "tomenu")
-async def cq_tomenu(cq: CallbackQuery, bot: Bot):
+async def cq_tomenu(cq: CallbackQuery, bot: Bot, state: FSMContext):
+    await state.clear()
     chat = cq.message.chat.id
     try:
         await cq.message.delete()
@@ -373,8 +381,49 @@ async def cq_stats(cq: CallbackQuery):
 
 
 @router.callback_query(F.data == "create")
-async def cq_create(cq: CallbackQuery):
-    await cq.answer("Напиши в чат: /create <имя>", show_alert=True)
+async def cq_create(cq: CallbackQuery, state: FSMContext):
+    await state.set_state(CreatePeer.name)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⬅️ В меню", callback_data="tomenu")
+    await cq.message.answer(
+        "Введите имя нового пользователя:\n"
+        "Буквы, цифры, точки, дефис и _ (до 24 символов).",
+        reply_markup=kb.as_markup(),
+    )
+    await cq.answer()
+
+
+@router.message(CreatePeer.name)
+async def create_name(msg: Message, state: FSMContext):
+    name = (msg.text or "").strip()
+    if not name or name.lower() in ("отмена", "/cancel"):
+        await state.clear()
+        await msg.answer("Отменено.", reply_markup=main_menu())
+        return
+    status_msg = await msg.answer("Создаю пользователя...")
+    try:
+        cfg, qr = wireguard.create_peer(name)
+    except WGError as e:
+        await status_msg.delete()
+        await msg.answer(f"⚠️ {e}\n\nВведите имя ещё раз:")
+        return
+    except Exception as e:
+        await state.clear()
+        await status_msg.delete()
+        await msg.answer(f"⚠️ Ошибка MikroTik: {e}")
+        return
+    await state.clear()
+    CONFIGS[name.lower()] = {"cfg": cfg, "status_id": status_msg.message_id}
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⚙️ Показать настройки", callback_data=f"cfg:{name}")
+    await msg.answer_photo(
+        BufferedInputFile(qr.read(), filename="config.png"),
+        caption=(
+            f"Пользователь <b>{name}</b> создан!\n"
+            "Отсканируй QR-код или нажми кнопку, чтобы увидеть настройки:"
+        ),
+        reply_markup=kb.as_markup(),
+    )
 
 
 @router.callback_query(F.data.startswith("cfg:"))
