@@ -1,6 +1,10 @@
 import asyncio
 import logging
+import os
 import socket
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties

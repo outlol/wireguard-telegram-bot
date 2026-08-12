@@ -8,6 +8,7 @@ configs/
 __pycache__/
 *.py[cod]
 .venv/
+.python313/
 
 # Logs
 *.log

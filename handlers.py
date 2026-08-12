@@ -51,7 +51,6 @@ def main_menu() -> InlineKeyboardMarkup:
     kb.button(text="🔑 Конфиг пользователя", callback_data="config")
     kb.button(text="⏯ Вкл/выкл", callback_data="toggle")
     kb.button(text="🗑 Удалить", callback_data="delete")
-    kb.button(text="❓ Помощь", callback_data="help")
     kb.adjust(1)
     return kb.as_markup()
 
