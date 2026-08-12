@@ -246,6 +246,7 @@ async def config_cmd(msg: Message, bot: Bot):
     view = VIEWS.get(chat)
     if view:
         await _del_msg(bot, chat, view.get("cfg_id"))
+        await _del_msg(bot, chat, view.get("file_id"))
         await _del_msg(bot, chat, view.get("photo_id"))
     kb = InlineKeyboardBuilder()
     kb.button(text="⚙️ Показать настройки", callback_data=f"reveal:{name}")
@@ -257,7 +258,7 @@ async def config_cmd(msg: Message, bot: Bot):
         caption=f"Настройки пользователя <b>{name}</b>.",
         reply_markup=kb.as_markup(),
     )
-    VIEWS[chat] = {"photo_id": photo.message_id, "cfg_id": None}
+    VIEWS[chat] = {"photo_id": photo.message_id, "cfg_id": None, "file_id": None}
 
 
 @router.message(Command("toggle"))
@@ -445,11 +446,20 @@ async def cq_show_config(cq: CallbackQuery, bot: Bot):
                 show_alert=True,
             )
             return
+    chat = cq.message.chat.id
+    view = VIEWS.get(chat)
+    if view:
+        await _del_msg(bot, chat, view.get("cfg_id"))
+        await _del_msg(bot, chat, view.get("file_id"))
     try:
-        await bot.delete_message(cq.message.chat.id, info["status_id"])
+        await bot.delete_message(chat, info["status_id"])
     except Exception:
         pass
-    await cq.message.answer(f"<pre>{cfg}</pre>")
+    msg = await cq.message.answer(f"<pre>{cfg}</pre>")
+    if not view:
+        view = {"photo_id": None, "cfg_id": None, "file_id": None}
+        VIEWS[chat] = view
+    view["cfg_id"] = msg.message_id
     await cq.answer()
 
 
@@ -483,6 +493,7 @@ async def cq_show_peer_cfg(cq: CallbackQuery, bot: Bot):
     view = VIEWS.get(chat)
     if view:
         await _del_msg(bot, chat, view.get("cfg_id"))
+        await _del_msg(bot, chat, view.get("file_id"))
         await _del_msg(bot, chat, view.get("photo_id"))
     try:
         await cq.message.delete()
@@ -499,7 +510,7 @@ async def cq_show_peer_cfg(cq: CallbackQuery, bot: Bot):
         caption=f"Настройки пользователя <b>{name}</b>.",
         reply_markup=kb.as_markup(),
     )
-    VIEWS[chat] = {"photo_id": photo.message_id, "cfg_id": None}
+    VIEWS[chat] = {"photo_id": photo.message_id, "cfg_id": None, "file_id": None}
     await cq.answer()
 
 
@@ -513,11 +524,12 @@ async def cq_reveal_cfg(cq: CallbackQuery, bot: Bot):
         return
     chat = cq.message.chat.id
     view = VIEWS.get(chat)
-    if view and view.get("cfg_id"):
-        await _del_msg(bot, chat, view["cfg_id"])
+    if view:
+        await _del_msg(bot, chat, view.get("cfg_id"))
+        await _del_msg(bot, chat, view.get("file_id"))
     msg = await cq.message.answer(f"<pre>{cfg}</pre>")
     if not view:
-        view = {"photo_id": None, "cfg_id": None}
+        view = {"photo_id": None, "cfg_id": None, "file_id": None}
         VIEWS[chat] = view
     view["cfg_id"] = msg.message_id
     await cq.answer()
@@ -531,11 +543,19 @@ async def cq_send_file(cq: CallbackQuery, bot: Bot):
     except WGError as e:
         await cq.answer(str(e), show_alert=True)
         return
-    await bot.send_document(
-        cq.message.chat.id,
+    chat = cq.message.chat.id
+    view = VIEWS.get(chat)
+    if view:
+        await _del_msg(bot, chat, view.get("cfg_id"))
+    doc = await bot.send_document(
+        chat,
         BufferedInputFile(cfg.encode(), filename=f"{name}.conf"),
         caption=f"Конфиг пользователя <b>{name}</b>",
     )
+    if not view:
+        view = {"photo_id": None, "cfg_id": None, "file_id": None}
+        VIEWS[chat] = view
+    view["file_id"] = doc.message_id
     await cq.answer()
 
 
