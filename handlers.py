@@ -17,6 +17,7 @@ router = Router()
 
 AUTHED = set()
 CONFIGS = {}
+VIEWS = {}  # chat_id -> {"photo_id": ..., "cfg_id": ...}
 
 HELP_TEXT = (
     "<b>WireGuardPilot — управление VPN</b>\n\n"
@@ -53,6 +54,14 @@ def back_menu() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="⬅️ В меню", callback_data="menu")
     return kb.as_markup()
+
+
+async def _del_msg(bot: Bot, chat_id: int, msg_id: int):
+    if msg_id:
+        try:
+            await bot.delete_message(chat_id, msg_id)
+        except Exception:
+            pass
 
 
 def peer_buttons(peers, prefix: str) -> InlineKeyboardMarkup:
@@ -214,7 +223,7 @@ async def create(msg: Message):
 
 
 @router.message(Command("config"))
-async def config_cmd(msg: Message):
+async def config_cmd(msg: Message, bot: Bot):
     parts = (msg.text or "").strip().split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
         await msg.answer("Использование: /config <имя>", reply_markup=main_menu())
@@ -225,12 +234,19 @@ async def config_cmd(msg: Message):
     except WGError as e:
         await msg.answer(f"⚠️ {e}")
         return
-    qr = wireguard._make_qr(cfg)
-    await msg.answer_photo(
-        BufferedInputFile(qr.read(), filename="config.png"),
-        caption=f"Настройки пользователя <b>{name}</b>:",
+    chat = msg.chat.id
+    view = VIEWS.get(chat)
+    if view:
+        await _del_msg(bot, chat, view.get("cfg_id"))
+        await _del_msg(bot, chat, view.get("photo_id"))
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⚙️ Показать настройки", callback_data=f"reveal:{name}")
+    photo = await msg.answer_photo(
+        BufferedInputFile(wireguard._make_qr(cfg).read(), filename="config.png"),
+        caption=f"Настройки пользователя <b>{name}</b>.",
+        reply_markup=kb.as_markup(),
     )
-    await msg.answer(f"<pre>{cfg}</pre>")
+    VIEWS[chat] = {"photo_id": photo.message_id, "cfg_id": None}
 
 
 @router.message(Command("toggle"))
@@ -386,19 +402,46 @@ async def cq_config_list(cq: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("showcfg:"))
-async def cq_show_peer_cfg(cq: CallbackQuery):
+async def cq_show_peer_cfg(cq: CallbackQuery, bot: Bot):
     name = cq.data.split(":", 1)[1]
     try:
         cfg = wireguard.get_peer_config(name)
     except WGError as e:
         await cq.answer(str(e), show_alert=True)
         return
-    qr = wireguard._make_qr(cfg)
-    await cq.message.answer_photo(
-        BufferedInputFile(qr.read(), filename="config.png"),
-        caption=f"Настройки пользователя <b>{name}</b>:",
+    chat = cq.message.chat.id
+    view = VIEWS.get(chat)
+    if view:
+        await _del_msg(bot, chat, view.get("cfg_id"))
+        await _del_msg(bot, chat, view.get("photo_id"))
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⚙️ Показать настройки", callback_data=f"reveal:{name}")
+    photo = await cq.message.answer_photo(
+        BufferedInputFile(wireguard._make_qr(cfg).read(), filename="config.png"),
+        caption=f"Настройки пользователя <b>{name}</b>.",
+        reply_markup=kb.as_markup(),
     )
-    await cq.message.answer(f"<pre>{cfg}</pre>")
+    VIEWS[chat] = {"photo_id": photo.message_id, "cfg_id": None}
+    await cq.answer()
+
+
+@router.callback_query(F.data.startswith("reveal:"))
+async def cq_reveal_cfg(cq: CallbackQuery, bot: Bot):
+    name = cq.data.split(":", 1)[1]
+    try:
+        cfg = wireguard.get_peer_config(name)
+    except WGError as e:
+        await cq.answer(str(e), show_alert=True)
+        return
+    chat = cq.message.chat.id
+    view = VIEWS.get(chat)
+    if view and view.get("cfg_id"):
+        await _del_msg(bot, chat, view["cfg_id"])
+    msg = await cq.message.answer(f"<pre>{cfg}</pre>")
+    if not view:
+        view = {"photo_id": None, "cfg_id": None}
+        VIEWS[chat] = view
+    view["cfg_id"] = msg.message_id
     await cq.answer()
 
 
