@@ -1,6 +1,9 @@
 # Environment / secrets
 .env
 
+# Saved client configs (contain private keys)
+configs/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -24,6 +24,7 @@ HELP_TEXT = (
     "/start — главное меню\n"
     "/help — эта справка\n"
     "/create <имя> — создать пользователя (QR + настройки по кнопке)\n"
+    "/config <имя> — настройки существующего пользователя\n"
     "/peers — список пользователей\n"
     "/toggle <имя> — включить/выключить\n"
     "/delete <имя> — удалить пользователя\n"
@@ -40,6 +41,7 @@ def main_menu() -> InlineKeyboardMarkup:
     kb.button(text="📊 Статус сервера", callback_data="status")
     kb.button(text="📈 Статистика подключений", callback_data="stats")
     kb.button(text="➕ Создать пользователя", callback_data="create")
+    kb.button(text="🔑 Конфиг пользователя", callback_data="config")
     kb.button(text="⏯ Вкл/выкл", callback_data="toggle")
     kb.button(text="🗑 Удалить", callback_data="delete")
     kb.button(text="❓ Помощь", callback_data="help")
@@ -211,6 +213,26 @@ async def create(msg: Message):
     )
 
 
+@router.message(Command("config"))
+async def config_cmd(msg: Message):
+    parts = (msg.text or "").strip().split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await msg.answer("Использование: /config <имя>", reply_markup=main_menu())
+        return
+    name = parts[1].strip()
+    try:
+        cfg = wireguard.get_peer_config(name)
+    except WGError as e:
+        await msg.answer(f"⚠️ {e}")
+        return
+    qr = wireguard._make_qr(cfg)
+    await msg.answer_photo(
+        BufferedInputFile(qr.read(), filename="config.png"),
+        caption=f"Настройки пользователя <b>{name}</b>:",
+    )
+    await msg.answer(f"<pre>{cfg}</pre>")
+
+
 @router.message(Command("toggle"))
 async def toggle(msg: Message):
     parts = (msg.text or "").strip().split(maxsplit=1)
@@ -326,22 +348,57 @@ async def cq_create(cq: CallbackQuery):
 @router.callback_query(F.data.startswith("cfg:"))
 async def cq_show_config(cq: CallbackQuery, bot: Bot):
     name = cq.data.split(":", 1)[1]
-    info = CONFIGS.get(name.lower())
-    if not info:
-        await cq.answer(
-            "Настройки недоступны. Создай пользователя заново: /create <имя>",
-            show_alert=True,
-        )
-        return
+    info = CONFIGS.get(name.lower(), {})
     try:
-        await cq.message.delete()
-    except Exception:
-        pass
+        cfg = wireguard.get_peer_config(name)
+    except WGError:
+        cfg = info.get("cfg")
+        if not cfg:
+            await cq.answer(
+                "Настройки недоступны. Создай пользователя заново: /create <имя>",
+                show_alert=True,
+            )
+            return
     try:
         await bot.delete_message(cq.message.chat.id, info["status_id"])
     except Exception:
         pass
-    await cq.message.answer(f"<pre>{info['cfg']}</pre>")
+    await cq.message.answer(f"<pre>{cfg}</pre>")
+    await cq.answer()
+
+
+@router.callback_query(F.data == "config")
+async def cq_config_list(cq: CallbackQuery):
+    try:
+        peers = wireguard.list_peers()
+    except Exception as e:
+        await cq.answer(f"⚠️ {e}", show_alert=True)
+        return
+    if not peers:
+        await cq.message.edit_text("Пользователей пока нет.", reply_markup=back_menu())
+        await cq.answer()
+        return
+    await cq.message.edit_text(
+        "Выбери пользователя, чтобы увидеть его настройки:",
+        reply_markup=peer_buttons(peers, "showcfg"),
+    )
+    await cq.answer()
+
+
+@router.callback_query(F.data.startswith("showcfg:"))
+async def cq_show_peer_cfg(cq: CallbackQuery):
+    name = cq.data.split(":", 1)[1]
+    try:
+        cfg = wireguard.get_peer_config(name)
+    except WGError as e:
+        await cq.answer(str(e), show_alert=True)
+        return
+    qr = wireguard._make_qr(cfg)
+    await cq.message.answer_photo(
+        BufferedInputFile(qr.read(), filename="config.png"),
+        caption=f"Настройки пользователя <b>{name}</b>:",
+    )
+    await cq.message.answer(f"<pre>{cfg}</pre>")
     await cq.answer()
 
 

@@ -1,6 +1,7 @@
 import base64
 import io
 import ipaddress
+import pathlib
 import re
 
 import qrcode
@@ -120,6 +121,23 @@ def _make_qr(data):
     return buf
 
 
+CONFIGS_DIR = pathlib.Path(__file__).resolve().parent / "configs"
+
+
+def _save_config(name, cfg):
+    CONFIGS_DIR.mkdir(exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_.\-]", "_", name)
+    (CONFIGS_DIR / f"{safe}.conf").write_text(cfg, encoding="utf-8")
+
+
+def get_peer_config(name):
+    safe = re.sub(r"[^A-Za-z0-9_.\-]", "_", name)
+    path = CONFIGS_DIR / f"{safe}.conf"
+    if not path.exists():
+        raise WGError(f"Настройки для '{name}' не найдены")
+    return path.read_text(encoding="utf-8")
+
+
 def list_peers():
     api = connect()
     try:
@@ -202,6 +220,7 @@ def create_peer(name):
             )
         )
         cfg = _client_config(priv_b64, client_ip, server_pub)
+        _save_config(name, cfg)
         return cfg, _make_qr(cfg)
     finally:
         api.close()
