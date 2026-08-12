@@ -34,6 +34,7 @@ _proc = None
 _lock = threading.Lock()
 _stop_ev = threading.Event()
 _auto_restart = True
+_wanted = False  # True — бот должен работать (учитывается при автоперезапуске)
 
 
 def _python():
@@ -50,7 +51,8 @@ def is_running():
 
 
 def _start():
-    global _proc
+    global _proc, _wanted
+    _wanted = True
     with _lock:
         if _proc is not None and _proc.poll() is None:
             return
@@ -69,7 +71,8 @@ def _start():
 
 
 def _stop():
-    global _proc
+    global _proc, _wanted
+    _wanted = False
     with _lock:
         p, _proc = _proc, None
     if p is not None and p.poll() is None:
@@ -164,7 +167,7 @@ def _monitor(icon):
                 icon.update_menu()
             except Exception:
                 pass
-        if _auto_restart and not running:
+        if _auto_restart and _wanted and not running:
             _start()
 
 
