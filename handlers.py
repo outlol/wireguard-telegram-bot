@@ -414,9 +414,14 @@ async def cq_show_peer_cfg(cq: CallbackQuery, bot: Bot):
     if view:
         await _del_msg(bot, chat, view.get("cfg_id"))
         await _del_msg(bot, chat, view.get("photo_id"))
+    try:
+        await cq.message.delete()
+    except Exception:
+        pass
     kb = InlineKeyboardBuilder()
     kb.button(text="⚙️ Показать настройки", callback_data=f"reveal:{name}")
-    photo = await cq.message.answer_photo(
+    photo = await bot.send_photo(
+        chat,
         BufferedInputFile(wireguard._make_qr(cfg).read(), filename="config.png"),
         caption=f"Настройки пользователя <b>{name}</b>.",
         reply_markup=kb.as_markup(),
