@@ -13,6 +13,7 @@
   - Выход
 """
 
+import ctypes
 import os
 import subprocess
 import sys
@@ -25,6 +26,10 @@ from PIL import Image, ImageDraw
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "bot.log"
+
+# Защита от запуска нескольких копий трея (иначе каждый поднимет своего бота).
+_MUTEX_NAME = "Global\\WG_TG_Bot_Tray_Mutex"
+_hMutex = None
 
 COLOR_OK = (76, 175, 80, 255)      # зелёный
 COLOR_ERR = (229, 57, 53, 255)     # красный
@@ -50,9 +55,34 @@ def is_running():
     return p is not None and p.poll() is None
 
 
+def _kill_stray_bots():
+    """Убивает все осиротевшие процессы бота (main.py).
+
+    Бот запускается через venv-загрузчик, который порождает дочерний
+    интерпретатор. Если загрузчик умирает, интерпретатор может остаться
+    жить и продолжать поллинг -> конфликт с новым экземпляром.
+    """
+    if os.name != "nt":
+        return
+    try:
+        ps = (
+            "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | "
+            "Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match 'main\\.py' } | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+        )
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps],
+            capture_output=True,
+            timeout=20,
+        )
+    except Exception:
+        pass
+
+
 def _start():
     global _proc, _wanted
     _wanted = True
+    _kill_stray_bots()
     with _lock:
         if _proc is not None and _proc.poll() is None:
             return
@@ -76,11 +106,20 @@ def _stop():
     with _lock:
         p, _proc = _proc, None
     if p is not None and p.poll() is None:
-        p.terminate()
-        try:
-            p.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            p.kill()
+        if os.name == "nt":
+            # Бот запускается через venv-загрузчик, который порождает
+            # дочерний интерпретатор. Убиваем всё дерево процессов.
+            subprocess.run(
+                ["taskkill", "/PID", str(p.pid), "/T", "/F"],
+                capture_output=True,
+            )
+        else:
+            p.terminate()
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                p.kill()
+    _kill_stray_bots()
 
 
 def _restart():
@@ -171,7 +210,20 @@ def _monitor(icon):
             _start()
 
 
+def _acquire_mutex():
+    global _hMutex
+    if os.name != "nt":
+        return True
+    _hMutex = ctypes.windll.kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+    if not _hMutex:
+        return False
+    return ctypes.windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+
+
 def main():
+    if not _acquire_mutex():
+        print("Трей уже запущен. Выход.")
+        return
     icon = pystray.Icon(
         "wg_telegram_bot",
         _make_icon(False),
