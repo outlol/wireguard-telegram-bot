@@ -432,6 +432,27 @@ async def create_name(msg: Message, state: FSMContext):
     )
 
 
+@router.message(F.text)
+async def fallback(msg: Message):
+    if (msg.text or "").strip().startswith("/"):
+        return
+    kb = InlineKeyboardBuilder()
+    kb.button(text="▶️ Начать", callback_data="start")
+    await msg.answer(
+        "Привет! Я управляю WireGuard на MikroTik.\n"
+        "Нажми кнопку, чтобы открыть меню:",
+        reply_markup=kb.as_markup(),
+    )
+
+
+@router.callback_query(F.data == "start")
+async def cq_start(cq: CallbackQuery):
+    await cq.message.edit_text(
+        "Главное меню. Выбери действие:", reply_markup=main_menu()
+    )
+    await cq.answer()
+
+
 @router.callback_query(F.data.startswith("cfg:"))
 async def cq_show_config(cq: CallbackQuery, bot: Bot):
     name = cq.data.split(":", 1)[1]
