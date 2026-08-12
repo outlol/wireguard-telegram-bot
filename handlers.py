@@ -16,13 +16,14 @@ from wireguard import WGError
 router = Router()
 
 AUTHED = set()
+CONFIGS = {}
 
 HELP_TEXT = (
     "<b>WireGuardPilot — управление VPN</b>\n\n"
     "<b>Команды:</b>\n"
     "/start — главное меню\n"
     "/help — эта справка\n"
-    "/create <имя> — создать пользователя (конфиг + QR)\n"
+    "/create <имя> — создать пользователя (QR + настройки по кнопке)\n"
     "/peers — список пользователей\n"
     "/toggle <имя> — включить/выключить\n"
     "/delete <имя> — удалить пользователя\n"
@@ -194,11 +195,17 @@ async def create(msg: Message):
     except Exception as e:
         await msg.answer(f"⚠️ Ошибка MikroTik: {e}")
         return
+    CONFIGS[parts[1].lower()] = cfg
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⚙️ Показать настройки", callback_data=f"cfg:{parts[1]}")
     await msg.answer_photo(
         BufferedInputFile(qr.read(), filename="config.png"),
-        caption=f"Пользователь <b>{parts[1]}</b> создан. Отсканируй QR или скопируй конфиг:",
+        caption=(
+            f"Пользователь <b>{parts[1]}</b> создан!\n"
+            "Отсканируй QR-код или нажми кнопку, чтобы увидеть настройки:"
+        ),
+        reply_markup=kb.as_markup(),
     )
-    await msg.answer(f"<pre>{cfg}</pre>")
 
 
 @router.message(Command("toggle"))
@@ -311,6 +318,20 @@ async def cq_stats(cq: CallbackQuery):
 @router.callback_query(F.data == "create")
 async def cq_create(cq: CallbackQuery):
     await cq.answer("Напиши в чат: /create <имя>", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("cfg:"))
+async def cq_show_config(cq: CallbackQuery):
+    name = cq.data.split(":", 1)[1]
+    cfg = CONFIGS.get(name.lower())
+    if not cfg:
+        await cq.answer(
+            "Настройки недоступны. Создай пользователя заново: /create <имя>",
+            show_alert=True,
+        )
+        return
+    await cq.message.answer(f"<pre>{cfg}</pre>")
+    await cq.answer()
 
 
 @router.callback_query(F.data == "toggle")
