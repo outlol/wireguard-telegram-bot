@@ -520,7 +520,9 @@ async def cq_show_peer_cfg(cq: CallbackQuery, bot: Bot):
         await _del_msg(bot, chat, view.get("file_id"))
         await _del_msg(bot, chat, view.get("photo_id"))
     try:
-        await cq.message.delete()
+        await cq.message.edit_text(
+            f"Настройки пользователя <b>{name}</b> загружаются…",
+        )
     except Exception:
         pass
     kb = InlineKeyboardBuilder()
